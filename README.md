@@ -18,6 +18,6 @@ $ go install github.com/apstndb/jqurl@latest
 $ jqurl -s --data-jq '{test: "hoge"}' https://httpbin.org/post --ofilter ".json"
 
 # --auth=google adds Authorization header using ADC
-# all opts in `--oopts opts` passed to output jq
+# all opts in `--oopts opts` are passed to output jq
 $ jqurl -s --auth=google https://oauth2.googleapis.com/tokeninfo --oopts '.scope -r'
 ```
