@@ -78,25 +78,18 @@ func run(ctx context.Context) error {
 
 	var e Executable
 	if len(iopts) > 0 {
-		cmd := &Cmd{Cmd: exec.Command("gojq", iopts...)}
-		cmd.Stderr = os.Stderr
-		e = Join(e, cmd)
+		e = Join(e, &Cmd{Cmd: exec.Command("gojq", iopts...)})
 	}
 
-	{
-		cmd := &Cmd{Cmd: exec.Command("curl", args...)}
-		cmd.Stderr = os.Stderr
-		e = Join(e, cmd)
-	}
+	e = Join(e, &Cmd{Cmd: exec.Command("curl", args...)})
 
 	if len(oopts) > 0 {
-		cmd := &Cmd{Cmd: exec.Command("gojq", oopts...)}
-		cmd.Stderr = os.Stderr
-		e = Join(e, cmd)
+		e = Join(e, &Cmd{Cmd: exec.Command("gojq", oopts...)})
 	}
 
 	e.SetStdin(os.Stdin)
 	e.SetStdout(os.Stdout)
+	e.SetStderr(os.Stderr)
 
 	if err = e.Start(); err != nil {
 		return err

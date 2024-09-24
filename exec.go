@@ -11,10 +11,15 @@ type Executable interface {
 	Start() error
 	SetStdin(io.Reader)
 	SetStdout(io.Writer)
+	SetStderr(io.Writer)
 }
 
 type Cmd struct {
 	*exec.Cmd
+}
+
+func (c *Cmd) SetStderr(writer io.Writer) {
+	c.Stderr = writer
 }
 
 func (c *Cmd) SetStdin(reader io.Reader) {
@@ -28,6 +33,11 @@ func (c *Cmd) SetStdout(writer io.Writer) {
 type PipedCmds struct {
 	left, right Executable
 	writer      io.Writer
+}
+
+func (c *PipedCmds) SetStderr(writer io.Writer) {
+	c.left.SetStderr(writer)
+	c.right.SetStderr(writer)
 }
 
 func (c *PipedCmds) SetStdin(reader io.Reader) {
