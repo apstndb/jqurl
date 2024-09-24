@@ -6,15 +6,14 @@ import (
 	"github.com/apstndb/adcplus/tokensource"
 	"github.com/google/shlex"
 	"github.com/jessevdk/go-flags"
-	"golang.org/x/sync/errgroup"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 )
 
 type opts struct {
-	DataJq string `long:"data-jq"`
+	DataJq  string `long:"data-jq"`
+	Include bool   `long:"include" short:"i" description:"Include response headers in stderr"`
 
 	IOpts string `long:"iopts"`
 	OOpts string `long:"oopts"`
@@ -56,6 +55,10 @@ func run(ctx context.Context) error {
 		oopts = append(oopts, opts.OFilter)
 	}
 
+	if opts.Include {
+		args = append(args, "-D", "/dev/stderr")
+	}
+
 	switch opts.Auth {
 	case "google":
 		ts, err := tokensource.SmartAccessTokenSource(ctx)
@@ -73,91 +76,33 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("unknown --auth: %s", opts.Auth)
 	}
 
-	curl := exec.Command("curl", args...)
-	curl.Stderr = os.Stderr
-
-	var injq *exec.Cmd
-	var iw io.WriteCloser
+	var e Executable
 	if len(iopts) > 0 {
-		injq = exec.Command("gojq", iopts...)
-
-		var ir io.ReadCloser
-		ir, iw = io.Pipe()
-
-		curl.Stdin = ir
-
-		injq.Stdin = os.Stdin
-		injq.Stdout = iw
-		injq.Stderr = os.Stderr
-	} else {
-		curl.Stdin = os.Stdin
+		cmd := &Cmd{Cmd: exec.Command("gojq", iopts...)}
+		cmd.Stderr = os.Stderr
+		e = Join(e, cmd)
 	}
 
-	var outjq *exec.Cmd
-	var ow io.WriteCloser
+	{
+		cmd := &Cmd{Cmd: exec.Command("curl", args...)}
+		cmd.Stderr = os.Stderr
+		e = Join(e, cmd)
+	}
+
 	if len(oopts) > 0 {
-		outjq = exec.Command("gojq", oopts...)
-
-		var or io.ReadCloser
-		or, ow = io.Pipe()
-
-		curl.Stdout = ow
-
-		outjq.Stdin = or
-		outjq.Stdout = os.Stdout
-		outjq.Stderr = os.Stderr
-	} else {
-		curl.Stdout = os.Stdout
+		cmd := &Cmd{Cmd: exec.Command("gojq", oopts...)}
+		cmd.Stderr = os.Stderr
+		e = Join(e, cmd)
 	}
 
-	if injq != nil {
-		if err := injq.Start(); err != nil {
-			return fmt.Errorf("injq.Start: %w", err)
-		}
+	e.SetStdin(os.Stdin)
+	e.SetStdout(os.Stdout)
+
+	if err = e.Start(); err != nil {
+		return err
 	}
 
-	if err := curl.Start(); err != nil {
-		return fmt.Errorf("curl.Start: %w", err)
-	}
-
-	if outjq != nil {
-		if err := outjq.Start(); err != nil {
-			return fmt.Errorf("outjq.Start: %w", err)
-		}
-	}
-
-	var eg errgroup.Group
-	if injq != nil {
-		eg.Go(func() error {
-			if iw != nil {
-				defer iw.Close()
-			}
-			if err := injq.Wait(); err != nil {
-				return fmt.Errorf("injq.Wait: %w", err)
-			}
-			return nil
-		})
-	}
-
-	eg.Go(func() error {
-		if ow != nil {
-			defer ow.Close()
-		}
-		if err := curl.Wait(); err != nil {
-			return fmt.Errorf("curl.Wait: %w", err)
-		}
-		return nil
-	})
-
-	if outjq != nil {
-		eg.Go(func() error {
-			if err := outjq.Wait(); err != nil {
-				return fmt.Errorf("outjq.Wait: %w", err)
-			}
-			return nil
-		})
-	}
-	return eg.Wait()
+	return e.Wait()
 }
 
 func main() {
