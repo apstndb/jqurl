@@ -100,6 +100,14 @@ func run(ctx context.Context) error {
 		if len(iopts) > 0 {
 			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, iopts)...), strconv.Quote), " "))
 		}
+		switch opts.Auth {
+		case "google":
+			args = append(args, "-H", "Authorization: Bearer $(gcloud auth application-default print-access-token)")
+		case "":
+			// no action
+		default:
+			return fmt.Errorf("unknown --auth: %s", opts.Auth)
+		}
 		strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"curl"}, args)...), strconv.Quote), " "))
 		if len(oopts) > 0 {
 			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, oopts)...), strconv.Quote), " "))
