@@ -3,6 +3,7 @@ package main
 import (
 	"golang.org/x/sync/errgroup"
 	"io"
+	"os"
 	"os/exec"
 )
 
@@ -14,19 +15,19 @@ type Executable interface {
 	SetStderr(io.Writer)
 }
 
-type Cmd struct {
+type CmdWrapper struct {
 	*exec.Cmd
 }
 
-func (c *Cmd) SetStderr(writer io.Writer) {
+func (c *CmdWrapper) SetStderr(writer io.Writer) {
 	c.Stderr = writer
 }
 
-func (c *Cmd) SetStdin(reader io.Reader) {
+func (c *CmdWrapper) SetStdin(reader io.Reader) {
 	c.Cmd.Stdin = reader
 }
 
-func (c *Cmd) SetStdout(writer io.Writer) {
+func (c *CmdWrapper) SetStdout(writer io.Writer) {
 	c.Cmd.Stdout = writer
 }
 
@@ -64,6 +65,10 @@ func Join(left, right Executable) Executable {
 	return &PipedCmds{left, right, w}
 }
 
+func Cmd(c *exec.Cmd) Executable {
+	return &CmdWrapper{c}
+}
+
 func (c *PipedCmds) Wait() error {
 	var eg errgroup.Group
 	eg.Go(func() error {
@@ -90,9 +95,11 @@ func (c *PipedCmds) Start() error {
 	return eg.Wait()
 }
 
-var _ Executable = (*Cmd)(nil)
+var _ Executable = (*CmdWrapper)(nil)
 var _ Executable = (*PipedCmds)(nil)
 
-func (c *Cmd) Wait() error {
-	return c.Cmd.Wait()
+func SetAllToStd(e Executable) {
+	e.SetStdin(os.Stdin)
+	e.SetStdout(os.Stdout)
+	e.SetStderr(os.Stderr)
 }

@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"deedles.dev/xiter"
 	"fmt"
 	"github.com/apstndb/adcplus/tokensource"
 	"github.com/google/shlex"
 	"github.com/jessevdk/go-flags"
+	"iter"
 	"log"
-	"os"
 	"os/exec"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 type opts struct {
@@ -22,6 +27,16 @@ type opts struct {
 	OFilter string `long:"ofilter"`
 
 	Auth string `long:"auth"`
+
+	DryRun bool `long:"dry-run"`
+}
+
+var httpOrHTTPSRe = regexp.MustCompile("^https?://")
+
+func joinStringSeq(i iter.Seq[string], sep string) string {
+	return xiter.Fold(i, func(l string, r string) string {
+		return l + sep + r
+	})
 }
 
 func run(ctx context.Context) error {
@@ -42,6 +57,27 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	var positionalOFilter string
+	for i := len(args) - 1; i >= 0; i-- {
+		arg := args[i]
+		if httpOrHTTPSRe.MatchString(arg) {
+			break
+		}
+		if !strings.HasPrefix(arg, "-") {
+			positionalOFilter = arg
+			args = slices.Concat(args[0:i], args[i+1:])
+			break
+		}
+	}
+
+	if positionalOFilter != "" && opts.OFilter != "" {
+		return fmt.Errorf("positional filter and --ofilter are exclusive")
+	}
+
+	if positionalOFilter != "" {
+		oopts = append(oopts, positionalOFilter)
+	}
+
 	if opts.DataJq != "" {
 		iopts = append(iopts, "-n", opts.DataJq)
 		args = append(args, "--json", "@-")
@@ -57,6 +93,19 @@ func run(ctx context.Context) error {
 
 	if opts.Include {
 		args = append(args, "-D", "/dev/stderr")
+	}
+
+	if opts.DryRun {
+		var strs []string
+		if len(iopts) > 0 {
+			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, iopts)...), strconv.Quote), " "))
+		}
+		strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"curl"}, args)...), strconv.Quote), " "))
+		if len(oopts) > 0 {
+			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, oopts)...), strconv.Quote), " "))
+		}
+		fmt.Println(strings.Join(strs, " | "))
+		return nil
 	}
 
 	switch opts.Auth {
@@ -78,18 +127,16 @@ func run(ctx context.Context) error {
 
 	var e Executable
 	if len(iopts) > 0 {
-		e = Join(e, &Cmd{Cmd: exec.Command("gojq", iopts...)})
+		e = Join(e, Cmd(exec.Command("gojq", iopts...)))
 	}
 
-	e = Join(e, &Cmd{Cmd: exec.Command("curl", args...)})
+	e = Join(e, Cmd(exec.Command("curl", args...)))
 
 	if len(oopts) > 0 {
-		e = Join(e, &Cmd{Cmd: exec.Command("gojq", oopts...)})
+		e = Join(e, Cmd(exec.Command("gojq", oopts...)))
 	}
 
-	e.SetStdin(os.Stdin)
-	e.SetStdout(os.Stdout)
-	e.SetStderr(os.Stderr)
+	SetAllToStd(e)
 
 	if err = e.Start(); err != nil {
 		return err
