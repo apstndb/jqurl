@@ -147,7 +147,7 @@ func run(ctx context.Context) error {
 	if opts.DryRun {
 		var strs []string
 		if len(iopts) > 0 {
-			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"jq"}, iopts)))
+			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"gojq"}, iopts)))
 		}
 
 		// authOpts needs manual quote because they don't be processed by shellescape.Quote.
@@ -162,7 +162,7 @@ func run(ctx context.Context) error {
 		}
 		strs = append(strs, joinStringSeq(dxiter.Concat(dxiter.Map(slices.Values(slices.Concat([]string{"curl"}, args)), shellescape.Quote), slices.Values(authOpts)), " "))
 		if len(oopts) > 0 {
-			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"jq"}, oopts)))
+			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"gojq"}, oopts)))
 		}
 		fmt.Println(strings.Join(strs, " | "))
 		return nil
