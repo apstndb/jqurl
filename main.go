@@ -1,18 +1,19 @@
 package main
 
 import (
+	"al.essio.dev/pkg/shellescape"
 	"context"
-	"deedles.dev/xiter"
+	dxiter "deedles.dev/xiter"
 	"fmt"
 	"github.com/apstndb/adcplus/tokensource"
 	"github.com/google/shlex"
 	"github.com/jessevdk/go-flags"
+
 	"iter"
 	"log"
 	"os/exec"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -29,12 +30,23 @@ type opts struct {
 	Auth string `long:"auth"`
 
 	DryRun bool `long:"dry-run"`
+
+	RawInput         bool `long:"raw-input"`
+	RawOutput        bool `long:"raw-output"`
+	YamlInput        bool `long:"yaml-input"`
+	YamlOutput       bool `long:"yaml-output"`
+	ColorOutput      bool `long:"color-output"`
+	MonochromeOutput bool `long:"monochrome-output"`
+	CompactOutput    bool `long:"compact-output"`
+	JoinOutput       bool `long:"join-output"`
+	RawOutput0       bool `long:"raw-output0"`
+	Slurp            bool `long:"slurp"`
 }
 
 var httpOrHTTPSRe = regexp.MustCompile("^https?://")
 
 func joinStringSeq(i iter.Seq[string], sep string) string {
-	return xiter.Fold(i, func(l string, r string) string {
+	return dxiter.Fold(i, func(l string, r string) string {
 		return l + sep + r
 	})
 }
@@ -42,6 +54,7 @@ func joinStringSeq(i iter.Seq[string], sep string) string {
 func run(ctx context.Context) error {
 	var opts opts
 	p := flags.NewParser(&opts, flags.Options(flags.IgnoreUnknown|flags.HelpFlag))
+	p.Usage = "[options...] <url> [<filter>]"
 	args, err := p.Parse()
 	if err != nil {
 		log.Fatalln(err)
@@ -95,22 +108,61 @@ func run(ctx context.Context) error {
 		args = append(args, "-D", "/dev/stderr")
 	}
 
+	if opts.CompactOutput {
+		oopts = append(oopts, "-c")
+	}
+
+	if opts.RawOutput {
+		oopts = append(oopts, "-r")
+	}
+
+	if opts.RawOutput0 {
+		oopts = append(oopts, "--raw-output0")
+	}
+
+	if opts.ColorOutput {
+		oopts = append(oopts, "-C")
+	}
+
+	if opts.MonochromeOutput {
+		oopts = append(oopts, "-M")
+	}
+
+	if opts.YamlInput {
+		iopts = append(iopts, "--yaml-input")
+	}
+
+	if opts.YamlOutput {
+		oopts = append(oopts, "--yaml-output")
+	}
+
+	if opts.JoinOutput {
+		oopts = append(oopts, "--join-output")
+	}
+
+	if opts.Slurp {
+		iopts = append(iopts, "--slurp")
+	}
+
 	if opts.DryRun {
 		var strs []string
 		if len(iopts) > 0 {
-			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, iopts)...), strconv.Quote), " "))
+			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"jq"}, iopts)))
 		}
+
+		// authOpts needs manual quote because they don't be processed by shellescape.Quote.
+		var authOpts []string
 		switch opts.Auth {
 		case "google":
-			args = append(args, "-H", "Authorization: Bearer $(gcloud auth application-default print-access-token)")
+			authOpts = append(authOpts, `-H`, `"Authorization: Bearer $(gcloud auth application-default print-access-token)"`)
 		case "":
 			// no action
 		default:
 			return fmt.Errorf("unknown --auth: %s", opts.Auth)
 		}
-		strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"curl"}, args)...), strconv.Quote), " "))
+		strs = append(strs, joinStringSeq(dxiter.Concat(dxiter.Map(slices.Values(slices.Concat([]string{"curl"}, args)), shellescape.Quote), slices.Values(authOpts)), " "))
 		if len(oopts) > 0 {
-			strs = append(strs, joinStringSeq(xiter.Map(xiter.Of(slices.Concat([]string{"jq"}, oopts)...), strconv.Quote), " "))
+			strs = append(strs, shellescape.QuoteCommand(slices.Concat([]string{"jq"}, oopts)))
 		}
 		fmt.Println(strings.Join(strs, " | "))
 		return nil

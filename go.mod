@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.23.1
 
 require (
+	al.essio.dev/pkg/shellescape v1.5.0
 	deedles.dev/xiter v0.1.0
 	github.com/apstndb/adcplus v0.0.0-20210615091706-c0983920581f
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
