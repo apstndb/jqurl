@@ -31,16 +31,20 @@ type opts struct {
 
 	DryRun bool `long:"dry-run"`
 
-	RawInput         bool `long:"raw-input"`
-	RawOutput        bool `long:"raw-output"`
-	YamlInput        bool `long:"yaml-input"`
-	YamlOutput       bool `long:"yaml-output"`
-	ColorOutput      bool `long:"color-output"`
-	MonochromeOutput bool `long:"monochrome-output"`
-	CompactOutput    bool `long:"compact-output"`
-	JoinOutput       bool `long:"join-output"`
-	RawOutput0       bool `long:"raw-output0"`
-	Slurp            bool `long:"slurp"`
+	// input flags
+	Slurp     bool `long:"slurp" description:"-s is curl option(--silent)"`
+	RawInput  bool `long:"raw-input" short:"R" description:"Override curl option --remote-time"` // -R
+	YamlInput bool `long:"yaml-input" description:""`
+	NullInput bool `long:"null-input" short:"n" description:"Override curl option --netrc"`
+
+	// output flags
+	RawOutput        bool `long:"raw-output" short:"r" description:"output raw strings; override curl option --range"` // -r
+	RawOutput0       bool `long:"raw-output0" description:"implies -r with NUL character delimiter"`
+	YamlOutput       bool `long:"yaml-output" description:"output in YAML format"`
+	JoinOutput       bool `long:"join-output" short:"j" description:"implies -r with no newline delimiter; override curl option --junk-session-cookies"`
+	CompactOutput    bool `long:"compact-output" short:"c" description:"output without pretty-printing; override curl option--cookie-jar"`
+	ColorOutput      bool `long:"color-output" short:"C" description:"output with colors even if piped; override curl option --continue-at"`
+	MonochromeOutput bool `long:"monochrome-output" short:"M" description:"output without colors; override curl option --manual"`
 }
 
 var httpOrHTTPSRe = regexp.MustCompile("^https?://")
@@ -70,12 +74,14 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// find positionalOFilter from args backward
 	var positionalOFilter string
-	for i := len(args) - 1; i >= 0; i-- {
-		arg := args[i]
+	for i, arg := range slices.Backward(args) {
+		// positionalOFilter is not permitted before URLs
 		if httpOrHTTPSRe.MatchString(arg) {
 			break
 		}
+
 		if !strings.HasPrefix(arg, "-") {
 			positionalOFilter = arg
 			args = slices.Concat(args[0:i], args[i+1:])
